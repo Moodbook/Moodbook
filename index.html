@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DossierFacile - Gestion de dossiers</title>
+  <link href="https://unpkg.com/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.24.7/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+</head>
+<body class="bg-gray-100">
+  <div id="root" class="max-w-md mx-auto h-screen flex flex-col"></div>
+  <script type="text/babel">
+    // Configuration Supabase
+    const supabaseUrl = 'https://czmlehqfgrtnwjbigzjw.supabase.co';
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN6bWxlaHFmZ3J0bndqYmlnemp3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc4MzY4MTUsImV4cCI6MjA2MzQxMjgxNX0.Zejqzxze8NA0H2QJUedEdnUoqyc_gvw7YZfc6zGS2To';
+    let supabase = null;
+    try {
+      supabase = Supabase.createClient(supabaseUrl, supabaseKey);
+    } catch (err) {
+      console.error('Erreur d’initialisation de Supabase:', err);
+    }
+
+    function Header() {
+      return (
+        <header class="bg-blue-600 text-white p-4 flex justify-between items-center">
+          <h1 class="text-xl font-bold">DossierFacile</h1>
+          <button 
+            class="text-sm bg-blue-800 px-3 py-1 rounded hover:bg-blue-900"
+            aria-label="Accéder au profil utilisateur"
+            disabled
+          >
+            Profil
+          </button>
+        </header>
+      );
+    }
+
+    function CreateDossier({ onCreate }) {
+      const [dossierName, setDossierName] = React.useState('');
+      const [error, setError] = React.useState('');
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!dossierName.trim()) {
+          setError('Veuillez entrer un nom de dossier.');
+          return;
+        }
+        setError('');
+        await onCreate(dossierName);
+        setDossierName('');
+      };
+
+      return (
+        <section class="p-4">
+          <h2 class="text-xl font-bold mb-4">Créer un dossier</h2>
+          <form onSubmit={handleSubmit} class="bg-white p-4 rounded-lg shadow">
+            <input
+              type="text"
+              placeholder="Ex. : Déclaration dégâts des eaux"
+              value={dossierName}
+              onChange={(e) => setDossierName(e.target.value)}
+              class="w-full p-2 border rounded mb-4"
+              aria-label="Nom du nouveau dossier"
+            />
+            {error && <p class="text-red-500 text-sm mb-2">{error}</p>}
+            <button 
+              type="submit" 
+              class="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
+              aria-label="Créer un nouveau dossier"
+            >
+              Créer
+            </button>
+          </form>
+        </section>
+      );
+    }
+
+    function UploadDocument({ dossiers, onUpload }) {
+      const [selectedDossier, setSelectedDossier] = React.useState('');
+      const [error, setError] = React.useState('');
+
+      const handleFileChange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) {
+          setError('Aucun fichier sélectionné.');
+          return;
+        }
+        const validTypes = ['application/pdf', 'image/jpeg', 'image/png'];
+        if (!validTypes.includes(file.type)) {
+          setError('Format de fichier non supporté (PDF, JPG, PNG uniquement).');
+          return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+          setError('Le fichier est trop volumineux (max 5MB).');
+          return;
+        }
+        if (!selectedDossier) {
+          setError('Veuillez sélectionner un dossier.');
+          return;
+        }
+        setError('');
+        await onUpload(selectedDossier, file);
+      };
+
+      return (
+        <section class="p-4">
+          <h2 class="text-xl font-bold mb-4">Uploader un document</h2>
+          <div class="bg-white p-4 rounded-lg shadow">
+            <select
+              value={selectedDossier}
+              onChange={(e) => setSelectedDossier(e.target.value)}
+              class="w-full p-2 border rounded mb-4"
+              aria-label="Sélectionner un dossier"
+            >
+              <option value="">Choisir un dossier</option>
+              {dossiers.map((dossier) => (
+                <option key={dossier.id} value={dossier.id}>{dossier.name}</option>
+              ))}
+            </select>
+            <input
+              type="file"
+              accept=".pdf,.jpg,.png"
+              onChange={handleFileChange}
+              class="w-full p-2 border rounded mb-4"
+              aria-label="Téléverser un fichier PDF, JPG ou PNG"
+            />
+            {error && <p class="text-red-500 text-sm mb-2">{error}</p>}
+            <p class="text-sm text-gray-600">Formats : PDF, JPG, PNG (max 5MB)</p>
+          </div>
+        </section>
+      );
+    }
+
+    function DossierView({ dossiers, onFileClick }) {
+      return (
+        <section class="p-4 flex-1">
+          <h2 class="text-xl font-bold mb-4">Mes Dossiers</h2>
+          {dossiers.length === 0 ? (
+            <p class="text-gray-600">Aucun dossier créé.</p>
+          ) : (
+            <div class="space-y-4">
+              {dossiers.map((dossier) => (
+                <div key={dossier.id} class="bg-white p-4 rounded-lg shadow">
+                  <h3 class="font-semibold">{dossier.name || 'Dossier sans nom'}</h3>
+                  <p class="text-sm text-gray-600">Créé le : {dossier.created_at ? new Date(dossier.created_at).toLocaleDateString('fr-FR') : 'Date inconnue'}</p>
+                  {dossier.files && dossier.files.length > 0 ? (
+                    <div>
+                      <p class="text-sm font-medium mt-2">Documents :</p>
+                      {dossier.files.map((file, fileIndex) => (
+                        <div key={fileIndex} class="text-sm">
+                          <button
+                            onClick={() => onFileClick(file)}
+                            class="text-blue-600 hover:underline"
+                            aria-label={`Ouvrir le fichier ${file.name}`}
+                          >
+                            {file.name}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p class="text-sm text-gray-600">Aucun document.</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      );
+    }
+
+    function Navigation({ setView }) {
+      return (
+        <nav class="bg-white p-4 flex justify-around border-t">
+          <button 
+            onClick={() => setView('create')} 
+            class="text-blue-600 font-semibold"
+            aria-label="Aller à la création de dossier"
+          >
+            Créer
+          </button>
+          <button 
+            onClick={() => setView('upload')} 
+            class="text-gray-600"
+            aria-label="Aller à l'upload de document"
+          >
+            Uploader
+          </button>
+          <button 
+            onClick={() => setView('dossiers')} 
+            class="text-gray-600"
+            aria-label="Voir les dossiers"
+          >
+            Dossiers
+          </button>
+        </nav>
+      );
+    }
+
+    function App() {
+      const [currentView, setCurrentView] = React.useState('create');
+      const [dossiers, setDossiers] = React.useState([]);
+      const [error, setError] = React.useState('');
+      const [isLoading, setIsLoading] = React.useState(true);
+
+      // Charger les dossiers depuis Supabase
+      React.useEffect(() => {
+        if (!supabase) {
+          setError('Service de stockage indisponible. Vérifiez la configuration Supabase.');
+          setIsLoading(false);
+          return;
+        }
+        async function fetchDossiers() {
+          try {
+            const { data, error } = await supabase.from('dossiers').select('*');
+            if (error) throw error;
+            setDossiers(data || []);
+            setIsLoading(false);
+          } catch (err) {
+            console.error('Erreur Supabase:', err);
+            setError('Erreur lors du chargement des dossiers.');
+            setIsLoading(false);
+          }
+        }
+        fetchDossiers();
+      }, []);
+
+      const handleCreateDossier = async (name) => {
+        if (!supabase) {
+          setError('Service de stockage indisponible.');
+          return;
+        }
+        if (dossiers.some(d => d.name && d.name.toLowerCase() === name.toLowerCase())) {
+          setError('Un dossier avec ce nom existe déjà.');
+          return;
+        }
+        try {
+          const { data, error } = await supabase.from('dossiers').insert([
+            { name, files: [], created_at: new Date().toISOString() }
+          ]).select();
+          if (error) throw error;
+          setDossiers([...dossiers, data[0]]);
+          setCurrentView('dossiers');
+          setError('');
+        } catch (err) {
+          console.error('Erreur lors de la création du dossier:', err);
+          setError('Erreur lors de la création du dossier.');
+        }
+      };
+
+      const handleUpload = async (dossierId, file) => {
+        if (!supabase) {
+          setError('Service de stockage indisponible.');
+          return;
+        }
+        try {
+          const filePath = `${dossierId}/${file.name}`;
+          const { error: uploadError } = await supabase.storage.from('documents').upload(filePath, file, { upsert: true });
+          if (uploadError) throw uploadError;
+          const { data: urlData } = supabase.storage.from('documents').getPublicUrl(filePath);
+          const fileData = { name: file.name, id: filePath, url: urlData.publicUrl };
+
+          const { data: dossier, error: fetchError } = await supabase
+            .from('dossiers')
+            .select('files')
+            .eq('id', dossierId)
+            .single();
+          if (fetchError) throw fetchError;
+
+          const updatedFiles = [...(dossier.files || []), fileData];
+          const { error: updateError } = await supabase
+            .from('dossiers')
+            .update({ files: updatedFiles })
+            .eq('id', dossierId);
+          if (updateError) throw updateError;
+
+          setDossiers(dossiers.map(d => d.id === dossierId ? { ...d, files: updatedFiles } : d));
+          setCurrentView('dossiers');
+          setError('');
+        } catch (err) {
+          console.error('Erreur lors de l’upload:', err);
+          setError('Erreur lors de l’upload du fichier.');
+        }
+      };
+
+      const handleFileClick = async (file) => {
+        try {
+          if (file.url) {
+            window.open(file.url, '_blank');
+          } else {
+            alert('URL du fichier non disponible.');
+          }
+        } catch (err) {
+          console.error('Erreur lors de l’ouverture du fichier:', err);
+          alert('Erreur lors de l’ouverture du fichier.');
+        }
+      };
+
+      if (isLoading) {
+        return <div class="p-4 text-center">Chargement...</div>;
+      }
+
+      if (!supabase) {
+        return (
+          <div class="p-4 text-center text-red-500">
+            Erreur : Impossible de se connecter au service de stockage. Vérifiez votre configuration Supabase.
+          </div>
+        );
+      }
+
+      return (
+        <div class="flex flex-col h-full">
+          <Header />
+          {error && <p class="text-red-500 text-sm p-4">{error}</p>}
+          {currentView === 'create' && <CreateDossier onCreate={handleCreateDossier} />}
+          {currentView ==="upload" && <UploadDocument dossiers={dossiers} onUpload={handleUpload} />}
+          {currentView === 'dossiers' && <DossierView dossiers={dossiers} onFileClick={handleFileClick} />}
+          <Navigation setView={setCurrentView} />
+        </div>
+      );
+    }
+
+    // Vérifier le chargement des dépendances avant le rendu
+    if (typeof React !== 'undefined' && typeof ReactDOM !== 'undefined' && typeof Supabase !== 'undefined') {
+      document.addEventListener('DOMContentLoaded', () => {
+        const rootElement = document.getElementById('root');
+        if (rootElement) {
+          try {
+            ReactDOM.createRoot(rootElement).render(<App />);
+          } catch (err) {
+            console.error('Erreur de rendu React:', err);
+            document.body.innerHTML = '<p class="text-red-500 p-4">Erreur : Impossible de rendre l’application.</p>';
+          }
+        } else {
+          console.error('Erreur : Conteneur racine introuvable.');
+          document.body.innerHTML = '<p class="text-red-500 p-4">Erreur : Conteneur racine introuvable.</p>';
+        }
+      });
+    } else {
+      console.error('Erreur : Dépendances manquantes (React, ReactDOM, ou Supabase).');
+      document.body.innerHTML = '<p class="text-red-500 p-4">Erreur : Impossible de charger les dépendances nécessaires. Vérifiez votre connexion Internet.</p>';
+    }
+  </script>
+</body>
+</html>
